@@ -45,7 +45,6 @@ func init() {
 	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, dbConnections)
 }
 
-// ─── App ──────────────────────────────────────────────────────
 type App struct {
 	db *sql.DB
 }
