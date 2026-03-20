@@ -38,7 +38,7 @@ variable "cluster_public_access_cidrs" {
 variable "node_instance_types" {
   description = "EC2 instance types for node group"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.small"]
 }
 
 variable "node_disk_size" {
