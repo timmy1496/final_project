@@ -2,6 +2,9 @@
 
 Повна IaC інфраструктура для Go-застосунку на Amazon EKS.
 
+## PlantUML
+
+[infrastructure.puml](infrastructure.puml)
 
 ## Архітектура
 

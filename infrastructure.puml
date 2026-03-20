@@ -1,0 +1,166 @@
+@startuml Go App AWS Infrastructure
+
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam arrowColor #455A64
+skinparam arrowThickness 1.5
+skinparam rectangleBorderThickness 2
+skinparam rectangleRoundCorner 8
+
+skinparam rectangle {
+  BackgroundColor #F5F5F5
+  BorderColor #607D8B
+}
+
+title <b>Go App — AWS Infrastructure (eu-north-1)</b>
+
+' ─── ACTORS ──────────────────────────────────────────────────
+actor "Developer" as dev #LightSkyBlue
+actor "End User"  as user #LightGreen
+
+' ─── GITHUB ──────────────────────────────────────────────────
+rectangle "GitHub" #E8EAF6 {
+  component "Source Code" as repo #B3BCF5
+  component "terraform.yml\nfmt → validate → scan\nplan → apply → destroy" as tf_pipeline #C5CAE9
+  component "deploy.yml\nbuild → push ECR → deploy EKS" as deploy_pipeline #C5CAE9
+}
+
+' ─── IAM ─────────────────────────────────────────────────────
+rectangle "IAM" #FFFDE7 {
+  component "OIDC Provider\ntoken.actions.githubusercontent.com" as oidc #FFF9C4
+  component "github-actions-go-app Role" as gh_role #FFF9C4
+  component "eks-nodes-role" as node_role #FFF9C4
+  component "alb-controller Role (IRSA)" as alb_role #FFF9C4
+}
+
+' ─── TERRAFORM STATE ─────────────────────────────────────────
+rectangle "Terraform Remote State" #FBE9E7 {
+  database "S3 Bucket\ngo-app-terraform-state-dev\nversioning + AES256" as s3_state #FFCCBC
+  database "DynamoDB\nState Lock" as dynamo #FFCCBC
+}
+
+' ─── ECR ─────────────────────────────────────────────────────
+rectangle "ECR" #F3E5F5 {
+  component "go-app-dev\nscan on push\nlifecycle: keep 20 images" as ecr #E1BEE7
+}
+
+' ─── SSM ─────────────────────────────────────────────────────
+rectangle "SSM Parameter Store" #FCE4EC {
+  database "/go-app-dev/rds/password\nSecureString" as ssm_pwd #F8BBD0
+  database "/go-app-dev/rds/endpoint\nString" as ssm_ep #F8BBD0
+}
+
+' ─── VPC ─────────────────────────────────────────────────────
+rectangle "VPC  10.0.0.0/16" #E8F5E9 {
+
+  rectangle "Public Subnets  10.0.1.0/24 | 10.0.2.0/24" #DCEDC8 {
+    component "Internet Gateway" as igw #AED581
+    component "NAT Gateway + EIP" as nat #AED581
+    component "AWS ALB (internet-facing)\nALB Controller managed" as alb #AED581
+  }
+
+  rectangle "Private Subnets  10.0.10.0/24 | 10.0.11.0/24" #C8E6C9 {
+
+    rectangle "EKS Cluster  go-app-dev-cluster  k8s 1.29" #BBDEFB {
+
+      rectangle "kube-system" #E1F5FE {
+        component "aws-load-balancer-controller\n2 replicas" as alb_ctrl #B3E5FC
+        component "coredns + kube-proxy" as dns #B3E5FC
+        component "cloudwatch-agent\nfluent-bit DaemonSet" as cw_agent #B3E5FC
+      }
+
+      rectangle "app namespace" #E8F5E9 {
+        component "Deployment: go-app\n2 replicas (HPA: 2-10)\n:8080 HTTP | :8081 metrics" as go_deploy #A5D6A7
+        component "Service ClusterIP\n:80 → :8080" as svc #A5D6A7
+        component "Ingress ALB\nalb.ingress.kubernetes.io" as ingress #A5D6A7
+        component "HPA cpu>70% / mem>80%" as hpa #A5D6A7
+        component "PodDisruptionBudget\nminAvailable: 1" as pdb #A5D6A7
+        database "Secret: db-credentials\nDB_HOST, DB_NAME, DB_USER, DB_PASSWORD" as k8s_secret #A5D6A7
+      }
+
+      rectangle "monitoring namespace" #FFF8E1 {
+        component "kube-prometheus-stack\nPrometheus + Grafana + Alertmanager" as prom #FFE082
+        component "Loki Stack + Promtail" as loki #FFE082
+      }
+
+      rectangle "EKS Node Group  t3.medium x2  (min:1 max:4)" #F1F8E9 {
+        node "Node 1\n10.0.10.x" as node1 #CCFF90
+        node "Node 2\n10.0.11.x" as node2 #CCFF90
+      }
+    }
+
+    database "RDS MySQL 8.0\ngo-app-dev-mysql\ndb.t3.micro  20GB gp3\nbackup 7 days" as rds #FFE0B2
+  }
+}
+
+' ─── CLOUDWATCH ──────────────────────────────────────────────
+rectangle "CloudWatch" #FFF8E1 {
+  component "Container Insights\nEKS metrics + logs" as cw_insights #FFE082
+  component "GoApp-Production Dashboard\nCPU / Memory / RDS / ALB" as cw_dashboard #FFE082
+}
+
+' ─── RELATIONS ───────────────────────────────────────────────
+
+' Developer
+dev --> repo : git push
+repo --> tf_pipeline : trigger on\nterraform/**
+repo --> deploy_pipeline : trigger on\napp/** k8s/**
+
+' OIDC Auth
+tf_pipeline --> oidc : OIDC token
+deploy_pipeline --> oidc : OIDC token
+oidc --> gh_role : AssumeRoleWithWebIdentity
+
+' Terraform
+tf_pipeline --> s3_state : store state
+tf_pipeline --> dynamo : lock state
+gh_role --> s3_state : read/write
+
+' Deploy pipeline
+deploy_pipeline --> ecr : docker build & push
+deploy_pipeline --> ssm_pwd : get DB password
+deploy_pipeline --> k8s_secret : kubectl create secret
+deploy_pipeline --> go_deploy : kubectl apply
+
+' User traffic
+user --> alb : HTTP :80
+alb --> ingress : forward
+ingress --> svc : route
+svc --> go_deploy : :8080
+
+' DB connection
+go_deploy --> rds : MySQL :3306
+k8s_secret --> go_deploy : env vars
+rds --> ssm_pwd : password stored
+rds --> ssm_ep : endpoint stored
+
+' Networking
+igw --> nat : outbound traffic
+nat --> node1 : egress
+nat --> node2 : egress
+
+' ALB Controller
+alb_ctrl --> alb : provisions & manages
+alb_role --> alb_ctrl : IRSA permissions
+gh_role --> alb_ctrl : deploy
+
+' Node roles
+node_role --> node1 : attached
+node_role --> node2 : attached
+
+' ECR → Nodes
+ecr --> node1 : pull image
+ecr --> node2 : pull image
+
+' Monitoring
+cw_agent --> cw_insights : metrics & logs
+cw_insights --> cw_dashboard : visualize
+go_deploy --> prom : scrape /metrics :8081
+prom --> loki : correlate logs
+cw_dashboard --> cw_insights : data source
+
+' HPA
+hpa --> go_deploy : autoscale
+
+@enduml
