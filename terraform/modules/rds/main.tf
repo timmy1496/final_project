@@ -101,7 +101,7 @@ resource "aws_db_instance" "main" {
   monitoring_interval          = 60
   monitoring_role_arn          = aws_iam_role.rds_monitoring.arn
   enabled_cloudwatch_logs_exports = ["error", "slowquery"]
-  performance_insights_enabled = true
+  performance_insights_enabled = false
 
   # Misc
   auto_minor_version_upgrade = true

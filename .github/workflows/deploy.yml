@@ -15,7 +15,7 @@ on:
         default: "latest"
 
 env:
-  AWS_REGION: "eu-central-1"
+  AWS_REGION: "eu-north-1"
   ECR_REPOSITORY: "go-app-dev"
   EKS_CLUSTER_NAME: "go-app-dev-cluster"
   K8S_NAMESPACE: "app"
@@ -117,7 +117,7 @@ jobs:
       - name: Set image tag in manifests
         run: |
           IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:git-${{ github.sha }}"
-          sed -i "s|<ECR_REPO_URL>/go-app-dev:latest|${IMAGE}|g" k8s/app/01-deployment.yml
+          sed -i "s|798974632222.dkr.ecr.eu-north-1.amazonaws.com/go-app-dev:latest|${IMAGE}|g" k8s/app/01-deployment.yml
           echo "Deploying image: ${IMAGE}"
 
       - name: Deploy to EKS
