@@ -120,9 +120,11 @@ jobs:
 
       - name: Set image tag in manifests
         run: |
-          IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:git-${{ github.sha }}"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:git-${SHORT_SHA}"
           sed -i "s|<ECR_REPO_URL>/go-app-dev:latest|${IMAGE}|g" k8s/app/01-deployment.yml
           echo "Deploying image: ${IMAGE}"
+          grep "image:" k8s/app/01-deployment.yml
 
       - name: Deploy to EKS
         run: |
