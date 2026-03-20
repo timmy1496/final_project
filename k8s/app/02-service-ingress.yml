@@ -1,0 +1,71 @@
+---
+# ─── Service ────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: go-app
+  namespace: app
+  labels:
+    app: go-app
+spec:
+  selector:
+    app: go-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: metrics
+      port: 8081
+      targetPort: metrics
+      protocol: TCP
+  type: ClusterIP
+
+---
+# ─── ServiceMonitor (Prometheus scraping) ───────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: go-app
+  namespace: app
+  labels:
+    app: go-app
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: go-app
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+
+---
+# ─── Ingress (AWS ALB) ──────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: go-app
+  namespace: app
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+    alb.ingress.kubernetes.io/group.name: go-app
+    alb.ingress.kubernetes.io/tags: "Environment=dev,Project=go-app"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: go-app
+                port:
+                  name: http

@@ -1,0 +1,100 @@
+---
+# Role: monitoring
+# Installs kube-prometheus-stack (Prometheus + Grafana + Alertmanager)
+# + Loki + Promtail via Helm on EKS
+
+# ─── Namespace ──────────────────────────────────────────────
+- name: Create monitoring namespace
+  command: kubectl create namespace monitoring
+  register: ns
+  failed_when:
+    - ns.rc != 0
+    - "'already exists' not in ns.stderr"
+  changed_when: ns.rc == 0
+
+# ─── kube-prometheus-stack ──────────────────────────────────
+- name: Deploy kube-prometheus-stack
+  command: >
+    helm upgrade --install kube-prometheus-stack
+    prometheus-community/kube-prometheus-stack
+    --namespace monitoring
+    --version {{ prometheus_stack_version }}
+    --values {{ playbook_dir }}/roles/monitoring/files/prometheus-values.yml
+    --wait --timeout 10m
+  register: prom_deploy
+  changed_when: "'deployed' in prom_deploy.stdout or 'upgraded' in prom_deploy.stdout"
+
+# ─── Loki Stack ─────────────────────────────────────────────
+- name: Deploy Loki stack
+  command: >
+    helm upgrade --install loki
+    grafana/loki-stack
+    --namespace monitoring
+    --version {{ loki_stack_version }}
+    --values {{ playbook_dir }}/roles/monitoring/files/loki-values.yml
+    --wait --timeout 10m
+  register: loki_deploy
+  changed_when: "'deployed' in loki_deploy.stdout or 'upgraded' in loki_deploy.stdout"
+
+# ─── Add Loki datasource to Grafana ─────────────────────────
+- name: Wait for Grafana to be ready
+  command: >
+    kubectl rollout status deployment/kube-prometheus-stack-grafana
+    --namespace monitoring --timeout=3m
+  changed_when: false
+
+- name: Apply Grafana Loki datasource ConfigMap
+  command: >
+    kubectl apply -f {{ playbook_dir }}/roles/monitoring/files/grafana-loki-datasource.yml
+  changed_when: false
+
+# ─── CloudWatch Container Insights ──────────────────────────
+- name: Deploy CloudWatch agent (Container Insights)
+  command: >
+    kubectl apply -f
+    https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/quickstart/cwagent-fluent-bit-quickstart.yaml
+  environment:
+    ClusterName: "{{ cluster_name }}"
+    RegionName: "{{ aws_region }}"
+    FluentBitHttpPort: "2020"
+    FluentBitReadFromHead: "Off"
+    FluentBitReadFromTail: "On"
+  register: cw_deploy
+  changed_when: false
+  failed_when: false
+
+# ─── Get Grafana credentials ─────────────────────────────────
+- name: Get Grafana admin password
+  command: >
+    kubectl get secret --namespace monitoring
+    kube-prometheus-stack-grafana
+    -o jsonpath="{.data.admin-password}"
+  register: grafana_password_b64
+  changed_when: false
+  no_log: true
+
+- name: Decode Grafana password
+  set_fact:
+    grafana_password: "{{ grafana_password_b64.stdout | b64decode }}"
+  no_log: true
+
+- name: Get Grafana LoadBalancer URL
+  command: >
+    kubectl get svc kube-prometheus-stack-grafana
+    --namespace monitoring
+    -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  register: grafana_url
+  changed_when: false
+  retries: 10
+  delay: 15
+  until: grafana_url.stdout != ""
+
+- name: Print monitoring access info
+  debug:
+    msg:
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - "✅ Grafana URL:      http://{{ grafana_url.stdout }}"
+      - "✅ Grafana user:     admin"
+      - "✅ Grafana password: {{ grafana_password }}"
+      - "✅ Prometheus:       kubectl port-forward svc/kube-prometheus-stack-prometheus 9090:9090 -n monitoring"
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -1,0 +1,119 @@
+# kube-prometheus-stack Helm values
+# Документація: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
+
+grafana:
+  enabled: true
+  adminPassword: "Admin@Grafana2024!"  # Змінити в продакшені через secrets
+
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: gp2
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      # Node Exporter Full
+      node-exporter:
+        gnetId: 1860
+        revision: 37
+        datasource: Prometheus
+      # Kubernetes cluster overview
+      k8s-cluster:
+        gnetId: 7249
+        revision: 1
+        datasource: Prometheus
+      # Kubernetes pods
+      k8s-pods:
+        gnetId: 6781
+        revision: 1
+        datasource: Prometheus
+      # Go application metrics
+      go-app:
+        gnetId: 10826
+        revision: 1
+        datasource: Prometheus
+
+  sidecar:
+    datasources:
+      enabled: true
+    dashboards:
+      enabled: true
+
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    retention: 30d
+    retentionSize: "10GiB"
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp2
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+
+    # Scrape всіх ServiceMonitor у всіх namespace
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp2
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+# ServiceMonitor для Go застосунку
+additionalServiceMonitors:
+  - name: go-app
+    selector:
+      matchLabels:
+        app: go-app
+    namespaceSelector:
+      matchNames:
+        - app
+    endpoints:
+      - port: metrics
+        interval: 15s
+        path: /metrics

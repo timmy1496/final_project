@@ -1,0 +1,61 @@
+---
+# Role: deploy-app
+# Deploys Go application to EKS using kubectl
+
+# ─── Create namespace ───────────────────────────────────────
+- name: Create app namespace
+  command: kubectl create namespace {{ app_namespace }}
+  register: ns_create
+  failed_when:
+    - ns_create.rc != 0
+    - "'already exists' not in ns_create.stderr"
+  changed_when: ns_create.rc == 0
+
+# ─── Create secrets ─────────────────────────────────────────
+- name: Get DB password from SSM
+  command: >
+    aws ssm get-parameter
+    --name "/{{ project_name }}/rds/password"
+    --with-decryption
+    --query Parameter.Value
+    --output text
+    --region {{ aws_region }}
+  register: db_password
+  no_log: true
+
+- name: Create DB secret in k8s
+  command: >
+    kubectl create secret generic db-credentials
+    --namespace {{ app_namespace }}
+    --from-literal=DB_HOST={{ rds_endpoint }}
+    --from-literal=DB_NAME={{ db_name }}
+    --from-literal=DB_USER=admin
+    --from-literal=DB_PASSWORD={{ db_password.stdout }}
+    --dry-run=client -o yaml
+  register: db_secret_yaml
+  no_log: true
+
+- name: Apply DB secret
+  shell: |
+    echo '{{ db_secret_yaml.stdout }}' | kubectl apply -f -
+  no_log: true
+
+# ─── Apply Kubernetes manifests ─────────────────────────────
+- name: Apply k8s manifests
+  command: >
+    kubectl apply -f {{ playbook_dir }}/../k8s/app/
+    --namespace {{ app_namespace }}
+  register: k8s_apply
+  changed_when: "'configured' in k8s_apply.stdout or 'created' in k8s_apply.stdout"
+
+- name: Wait for deployment rollout
+  command: >
+    kubectl rollout status deployment/{{ app_name }}
+    --namespace {{ app_namespace }}
+    --timeout=5m
+  register: rollout_status
+  changed_when: false
+
+- name: Print deployment status
+  debug:
+    msg: "{{ rollout_status.stdout_lines }}"

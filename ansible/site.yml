@@ -1,0 +1,29 @@
+---
+# ============================================================
+# Main Ansible Playbook — Go App on EKS
+# ============================================================
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini site.yml
+#   ansible-playbook -i inventory/hosts.ini site.yml --tags k8s-tools
+#   ansible-playbook -i inventory/hosts.ini site.yml --tags monitoring
+# ============================================================
+
+- name: Install k8s tools and deploy app to EKS
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+  roles:
+    - k8s-tools
+    - deploy-app
+
+- name: Install monitoring stack on EKS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - group_vars/all.yml
+  tags: monitoring
+  roles:
+    - monitoring

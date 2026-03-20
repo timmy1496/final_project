@@ -1,0 +1,30 @@
+# ─── Dev environment — terraform.tfvars ────────────────────
+# Скопіюй в terraform.tfvars і заповни своїми значеннями
+
+aws_region   = "eu-central-1"
+environment  = "dev"
+project_name = "go-app"
+
+# Network
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.11.0/24"]
+
+# EKS
+kubernetes_version  = "1.29"
+node_instance_types = ["t3.medium"]
+node_desired_size   = 2
+node_min_size       = 1
+node_max_size       = 4
+ec2_ssh_key_name    = ""   # назва SSH key pair в AWS
+
+# RDS
+rds_instance_class = "db.t3.micro"
+db_name            = "appdb"
+
+common_tags = {
+  Project     = "go-app"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+  Owner       = "devops-team"
+}

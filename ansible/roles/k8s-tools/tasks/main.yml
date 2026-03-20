@@ -1,0 +1,170 @@
+---
+# Role: k8s-tools
+# Installs: kubectl, helm, aws-cli v2, eksctl, aws-iam-authenticator
+
+# ─── System packages ────────────────────────────────────────
+- name: Install required system packages
+  become: true
+  apt:
+    name:
+      - curl
+      - wget
+      - unzip
+      - git
+      - jq
+      - python3-pip
+      - ca-certificates
+      - gnupg
+      - apt-transport-https
+    state: present
+    update_cache: true
+
+# ─── AWS CLI v2 ─────────────────────────────────────────────
+- name: Check AWS CLI version
+  command: aws --version
+  register: aws_cli_check
+  failed_when: false
+  changed_when: false
+
+- name: Download AWS CLI v2
+  get_url:
+    url: "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+    dest: /tmp/awscliv2.zip
+    mode: "0644"
+  when: aws_cli_check.rc != 0
+
+- name: Extract AWS CLI v2
+  unarchive:
+    src: /tmp/awscliv2.zip
+    dest: /tmp/
+    remote_src: true
+  when: aws_cli_check.rc != 0
+
+- name: Install AWS CLI v2
+  become: true
+  command: /tmp/aws/install --update
+  when: aws_cli_check.rc != 0
+
+# ─── kubectl ────────────────────────────────────────────────
+- name: Check kubectl
+  command: kubectl version --client --short
+  register: kubectl_check
+  failed_when: false
+  changed_when: false
+
+- name: Download kubectl {{ kubectl_version }}
+  become: true
+  get_url:
+    url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/amd64/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: "0755"
+  when: kubectl_check.rc != 0
+
+# ─── Helm ───────────────────────────────────────────────────
+- name: Check Helm
+  command: helm version --short
+  register: helm_check
+  failed_when: false
+  changed_when: false
+
+- name: Download Helm install script
+  get_url:
+    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    dest: /tmp/get-helm-3.sh
+    mode: "0755"
+  when: helm_check.rc != 0
+
+- name: Install Helm
+  command: /tmp/get-helm-3.sh
+  environment:
+    DESIRED_VERSION: "v{{ helm_version }}"
+  when: helm_check.rc != 0
+
+# ─── eksctl ─────────────────────────────────────────────────
+- name: Check eksctl
+  command: eksctl version
+  register: eksctl_check
+  failed_when: false
+  changed_when: false
+
+- name: Download eksctl
+  get_url:
+    url: "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_Linux_amd64.tar.gz"
+    dest: /tmp/eksctl.tar.gz
+    mode: "0644"
+  when: eksctl_check.rc != 0
+
+- name: Install eksctl
+  become: true
+  shell: |
+    tar -xzf /tmp/eksctl.tar.gz -C /tmp/
+    mv /tmp/eksctl /usr/local/bin/eksctl
+    chmod +x /usr/local/bin/eksctl
+  when: eksctl_check.rc != 0
+
+# ─── Configure kubeconfig ───────────────────────────────────
+- name: Update kubeconfig for EKS cluster
+  command: >
+    aws eks update-kubeconfig
+    --region {{ aws_region }}
+    --name {{ cluster_name }}
+  register: kubeconfig_update
+  changed_when: "'Added new context' in kubeconfig_update.stdout"
+
+- name: Verify cluster connection
+  command: kubectl cluster-info
+  register: cluster_info
+  changed_when: false
+
+- name: Print cluster info
+  debug:
+    msg: "{{ cluster_info.stdout_lines }}"
+
+# ─── Add Helm repos ─────────────────────────────────────────
+- name: Add EKS Helm repo
+  command: helm repo add eks https://aws.github.io/eks-charts
+  changed_when: false
+
+- name: Add Prometheus community Helm repo
+  command: helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  changed_when: false
+
+- name: Add Grafana Helm repo
+  command: helm repo add grafana https://grafana.github.io/helm-charts
+  changed_when: false
+
+- name: Update Helm repos
+  command: helm repo update
+  changed_when: false
+
+# ─── Install AWS Load Balancer Controller ───────────────────
+- name: Create aws-load-balancer-controller namespace
+  command: kubectl create namespace kube-system
+  failed_when: false
+  changed_when: false
+
+- name: Apply AWS Load Balancer Controller CRDs
+  command: >
+    kubectl apply -k
+    "github.com/aws/eks-charts/stable/aws-load-balancer-controller/crds?ref=master"
+  changed_when: false
+
+- name: Deploy AWS Load Balancer Controller via Helm
+  command: >
+    helm upgrade --install aws-load-balancer-controller
+    eks/aws-load-balancer-controller
+    -n kube-system
+    --set clusterName={{ cluster_name }}
+    --set serviceAccount.create=true
+    --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"={{ alb_controller_role_arn }}
+    --wait --timeout 5m
+  register: alb_helm
+  changed_when: "'deployed' in alb_helm.stdout"
+
+- name: Print tool versions
+  debug:
+    msg:
+      - "kubectl:  {{ lookup('pipe', 'kubectl version --client --short 2>/dev/null || echo N/A') }}"
+      - "helm:     {{ lookup('pipe', 'helm version --short 2>/dev/null || echo N/A') }}"
+      - "eksctl:   {{ lookup('pipe', 'eksctl version 2>/dev/null || echo N/A') }}"
+      - "aws-cli:  {{ lookup('pipe', 'aws --version 2>/dev/null || echo N/A') }}"

@@ -1,0 +1,35 @@
+# Loki Stack Helm values
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: gp2
+  config:
+    auth_enabled: false
+    limits_config:
+      retention_period: 744h   # 31 days
+      ingestion_rate_mb: 16
+      ingestion_burst_size_mb: 32
+
+promtail:
+  enabled: true
+  config:
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+    snippets:
+      extraScrapeConfigs: |
+        - job_name: kubernetes-pods-app
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_namespace]
+              action: keep
+              regex: app
+            - source_labels: [__meta_kubernetes_pod_label_app]
+              target_label: app
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: namespace
+
+grafana:
+  enabled: false   # використовуємо grafana з kube-prometheus-stack
