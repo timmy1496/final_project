@@ -125,6 +125,29 @@ jobs:
           sed -i "s|<ECR_REPO_URL>/go-app-dev:latest|${IMAGE}|g" k8s/app/01-deployment.yml
           echo "Deploying image: ${IMAGE}"
           grep "image:" k8s/app/01-deployment.yml
+          
+      - name: Create DB credentials secret
+        run: |
+          RDS_ENDPOINT=$(aws rds describe-db-instances \
+            --db-instance-identifier go-app-dev-mysql \
+            --region ${{ env.AWS_REGION }} \
+            --query 'DBInstances[0].Endpoint.Address' \
+            --output text)
+      
+          DB_PASSWORD=$(aws ssm get-parameter \
+            --name "/go-app-dev/rds/password" \
+            --with-decryption \
+            --region ${{ env.AWS_REGION }} \
+            --query Parameter.Value \
+            --output text)
+      
+          kubectl create secret generic db-credentials \
+            --namespace ${{ env.K8S_NAMESPACE }} \
+            --from-literal=DB_HOST="${RDS_ENDPOINT}:3306" \
+            --from-literal=DB_NAME="appdb" \
+            --from-literal=DB_USER="admin" \
+            --from-literal=DB_PASSWORD="${DB_PASSWORD}" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy to EKS
         run: |
@@ -132,7 +155,6 @@ jobs:
           kubectl rollout status deployment/go-app \
             --namespace ${{ env.K8S_NAMESPACE }} \
             --timeout=5m
-            --validate=false
 
       - name: Get ALB URL
         run: |
