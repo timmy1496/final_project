@@ -1,20 +1,25 @@
 variable "project_name" {
-  type = string
+  description = "Project name prefix"
+  type        = string
 }
 
 variable "vpc_cidr" {
-  type = string
+  description = "VPC CIDR block"
+  type        = string
 }
 
 variable "public_subnet_cidrs" {
-  type = list(string)
+  description = "Public subnet CIDR blocks"
+  type        = list(string)
 }
 
 variable "private_subnet_cidrs" {
-  type = list(string)
+  description = "Private subnet CIDR blocks"
+  type        = list(string)
 }
 
 variable "common_tags" {
-  type    = map(string)
-  default = {}
+  description = "Common tags"
+  type        = map(string)
+  default     = {}
 }

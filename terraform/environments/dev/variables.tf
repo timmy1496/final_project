@@ -1,8 +1,8 @@
-variable "aws_region"   {
+variable "aws_region" {
   type = string
   default = "eu-north-1"
 }
-variable "environment"  {
+variable "environment" {
   type = string
   default = "dev"
 }
@@ -24,7 +24,7 @@ variable "private_subnet_cidrs" {
   default = ["10.0.10.0/24", "10.0.11.0/24"]
 }
 
-variable "kubernetes_version"  {
+variable "kubernetes_version" {
   type = string
   default = "1.29"
 }

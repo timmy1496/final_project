@@ -1,18 +1,22 @@
 variable "repository_name" {
-  type = string
+  description = "ECR repository name"
+  type        = string
 }
 
 variable "max_image_count" {
-  type    = number
-  default = 10
+  description = "Max number of tagged images to keep"
+  type        = number
+  default     = 10
 }
 
 variable "push_principal_arns" {
-  type    = list(string)
-  default = []
+  description = "IAM ARNs allowed to push images"
+  type        = list(string)
+  default     = []
 }
 
 variable "common_tags" {
-  type    = map(string)
-  default = {}
+  description = "Common tags"
+  type        = map(string)
+  default     = {}
 }
