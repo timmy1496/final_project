@@ -82,12 +82,6 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "0"   # не блокуємо, тільки репортуємо
 
-      - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-results.sarif
-
   # ─── Deploy to EKS ──────────────────────────────────────────
   deploy:
     name: "Deploy to EKS"
