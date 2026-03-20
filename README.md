@@ -195,6 +195,7 @@ make grafana-url
 
 **CloudWatch Container Insights** — автоматично налаштовується Ansible.
 Метрики доступні в AWS Console → CloudWatch → Container Insights.
+Також додано кастомний дашборд з основними метриками (CPU, Memory, Network) для EKS кластеру.
 
 ## База даних
 
@@ -208,12 +209,3 @@ aws ssm get-parameter \
   --query Parameter.Value \
   --output text
 ```
-
-## Security
-
-- [ ] Замінити `allowed_ssh_cidr` на конкретний IP
-- [ ] Налаштувати OIDC між GitHub і AWS (замість access keys)
-- [ ] Увімкнути `deletion_protection = true` для RDS в prod
-- [ ] Налаштувати `multi_az = true` для RDS в prod
-- [ ] Додати HTTPS до ALB Ingress (ACM certificate)
-- [ ] Налаштувати Network Policies в EKS
